@@ -60,6 +60,16 @@ occ_download_wait(gbif_download)
 d <- occ_download_get(gbif_download) %>%
   occ_download_import()
 
+# Canada Goose(Branta canadensis)
+name_backbone("Branta canadensis")
+gbif_download <- occ_download(pred("taxonKey", 5232437),
+                              pred_or(pred("year", 2010), pred("year", 2024)),
+                              pred("country","CA"),
+                              format = "SIMPLE_CSV")
+
+occ_download_wait(gbif_download)
+d <- occ_download_get(gbif_download) %>%
+  occ_download_import()
 
 # Load datasets
 chinook_salmon <- read.csv("data/chinook_salmon.csv", sep="\t")
