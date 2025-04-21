@@ -377,6 +377,20 @@ fit_final <- ppm(
 )
 summary(fit_final)
 
+## exclude data centers
+fit_no_dc <- ppm(
+  inside_bc ~ hfi_im + elev+ water + forest + I(forest^2),
+  covariates = list(
+    hfi_im = hfi_im,
+    elev = elev,
+    water = water,
+    forest = forest
+  ),
+  control = list(maxit = 5000)
+)
+summary(fit_no_dc)
+
+anova(fit_final, fit_no_dc)
 
 plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200)
 plot(inside_bc,
