@@ -10,6 +10,9 @@
 # Load necessary libraries
 library(spatstat)  # For point pattern analysis
 library(sf)        # For spatial feature manipulation
+library(sp)
+library(terra)
+library(raster)
 
 ################################################################################
 # 1. Data Import and Preprocessing
@@ -168,6 +171,15 @@ create_feature_plot <- function(data, title, data_ppp = NA){
   # points(data_center_ppp$x, data_center_ppp$y, col = "green", pch = 4, cex = 1.2)
 }
 
+#Calculate the partial residuals as a function of elevation
+create_partial_residual_plt <- function(model, covariate, xlab){
+  par_res <- parres(model, covariate)
+  plot(par_res,
+       legend = FALSE,
+       lwd = 2,
+       main = "",
+       xlab = xlab)
+}
 
 ######################################
 # I. EDA
@@ -195,7 +207,7 @@ year_data_2010 <- filter_by_year(data, 2010)
 transformed_points_2010 <- transform_points_to_bc(year_data_2010)
 inside_bc_2010 <- transformed_points_2010$bc_points_ppp
 summary(inside_bc_2010)
-cat("The salmon population: ", npoints(inside_bc_2010))
+cat("The Goose population: ", npoints(inside_bc_2010))
 
 # Visualize the density
 create_density_plot(inside_bc_2010, "Goose Distribution")
@@ -221,6 +233,21 @@ intensity(inside_bc)
 quadrat_result <- perform_quadrat_test(inside_bc, nx=4, ny=4)
 quadrat_result$test_result # p-value < 2.2e-16
 
+lambda_goose_pos <- density(inside_bc,
+                             sigma=bw.ppl,
+                             positive=TRUE)
+pcf_goose_inhom <- envelope(inside_bc,
+                             pcfinhom,
+                             simulate = expression(rpoispp(lambda_goose_pos)),
+                             rank = 1,
+                             nsim = 19)
+par(mfrow = c(1,2))
+plot(pcf_goose_inhom,
+     xlim = c(0,10000),
+     main = "",
+     lwd = 2,
+     legendargs = list(cex = 0.5))
+
 
 ######################################
 # Distance from data centers
@@ -238,12 +265,58 @@ plot(Window(inside_bc), add = TRUE)
 hfi <- DATA$HFI
 create_feature_plot(hfi, "Human Footprint Index", inside_bc)
 
+hfi_raster <- rast(hfi)
+hfi_median <- global(hfi_raster, fun = median, na.rm = TRUE)[[1]]
+
+# Replace all NA values with the median
+hfi_filled <- subst(hfi_raster, NA, hfi_median)
+
+#Convert to raster::RasterLayer 
+hfi_raster_filled <- raster(hfi_filled)
+
+#crop to match analysis window
+win_bbox <- as.rectangle(inside_bc$window)
+hfi_crop <- crop(hfi_raster_filled,
+                 extent(win_bbox$xrange[1], win_bbox$xrange[2],
+                        win_bbox$yrange[1], win_bbox$yrange[2]))
+
+#Convert to spatstat's im object (manual)
+hfi_matrix <- as.matrix(hfi_crop)
+x_coords <- seq(from = xmin(hfi_crop), to = xmax(hfi_crop), length.out = ncol(hfi_matrix))
+y_coords <- seq(from = ymin(hfi_crop), to = ymax(hfi_crop), length.out = nrow(hfi_matrix))
+hfi_matrix_flipped <- hfi_matrix[nrow(hfi_matrix):1, ]
+hfi_im <- im(hfi_matrix_flipped, xcol = x_coords, yrow = y_coords)
+plot(hfi_im)
+
 ######################################
 # Elevation
 ######################################
 elev <- DATA$Elevation
 create_feature_plot(elev, "Elevation (m)", inside_bc)
+#convert spatstat im to terra raster (if needed)
+elev_raster <- rast(elev)
+elev_median <- global(elev_raster, fun = median, na.rm = TRUE)[[1]]
 
+# replace all NA values with the median
+elev_filled <- subst(elev_raster, NA, elev_median)
+
+# Convert to raster::RasterLayer (for as.im compatibility)
+elev_raster_filled <- raster(elev_filled)
+
+# crop to match analysis window
+win_bbox <- as.rectangle(inside_bc$window)
+elev_crop <- crop(elev_raster_filled,
+                 extent(win_bbox$xrange[1], win_bbox$xrange[2],
+                        win_bbox$yrange[1], win_bbox$yrange[2]))
+
+# Convert to spatstat's im object (manual method – most reliable)
+elev_matrix <- as.matrix(elev_crop)
+x_coords <- seq(from = xmin(elev_crop), to = xmax(elev_crop), length.out = ncol(elev_matrix))
+y_coords <- seq(from = ymin(elev_crop), to = ymax(elev_crop), length.out = nrow(elev_matrix))
+elev_matrix_flipped <- elev_matrix[nrow(elev_matrix):1, ]
+elev_im <- im(elev_matrix_flipped, xcol = x_coords, yrow = y_coords)
+
+plot(elev_im)
 ######################################
 # Distance from water
 ######################################
@@ -262,38 +335,36 @@ create_feature_plot(forest, "Forest Cover (%)", inside_bc)
 ######################################
 # Estimate intensity as function of distance
 rho_dc <- rhohat(inside_bc, dc_dist, confidence = 0.95)
-plot(rho_dc, main = "Salmon Density vs Distance to Data Centers")
+plot(rho_dc, main = "Goose Density vs Distance to Data Centers")
 
 rho_forest <- rhohat(inside_bc, forest, confidence = 0.95)
-plot(rho_forest, main = "Salmon Density vs Forest Cover")
+plot(rho_forest, main = "Goose Density vs Forest Cover")
 
-rho_water <- rhohat(inside_bc_marked, water, confidence = 0.95)
-plot(rho_water, main = "Salmon Density vs Water Distance")
+rho_water <- rhohat(inside_bc, water, confidence = 0.95)
+plot(rho_water, main = "Goose Density vs Water Distance")
 
-rho_hfi <- rhohat(inside_bc_marked, hfi, confidence = 0.95)
-plot(rho_hfi, main = "Salmon Density vs HFI")
+rho_hfi <- rhohat(inside_bc, hfi_im, confidence = 0.95)
+plot(rho_hfi, main = "Goose Density vs HFI")
 
-rho_elev <- rhohat(inside_bc_marked, elev, confidence = 0.95)
-plot(rho_elev, main = "Salmon Density vs Elevation")
+rho_elev <- rhohat(inside_bc, elev, confidence = 0.95)
+plot(rho_elev, main = "Goose Density vs Elevation")
 
 # Colinearity -> not too strong
-cor.im(dist_im, hfi, elev, forest, water, use="pairwise.complete.obs")
-
+cor.im(dc_dist, hfi_im, elev, forest, water, use="pairwise.complete.obs")
 
 fit_final<- ppm(
-  inside_bc ~ dc_dist + hfi + elev + forest + water +  I(forest^2),
+  inside_bc ~ dc_dist + hfi_im + elev_im + forest + water+I(elev_im^2),
   data = list(
     dc_dist = dc_dist,
-    hfi = hfi,  
-    elev = elev,  
+    hfi_im = hfi_im,  
+    elev_im = elev_im,  
     water = water,  
     forest = forest  
   ),
-  control = list(maxit = 1000)
+  control = list(maxit = 10000)
 )
 
 summary(fit_final)
-
 plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200)
 plot(inside_bc,
      pch = 16,
@@ -318,38 +389,9 @@ res <- residuals(fit_final)
 plot(res,
      cols = "transparent")
 
-#Calculate the partial residuals as a function of elevation
-par_res_dist <- parres(fit_final, "dist_im")
-plot(par_res_dist,
-     legend = FALSE,
-     lwd = 2,
-     main = "",
-     xlab = "Distance")
-
-par_res_hfi <- parres(fit_final, "hfi")
-plot(par_res_hfi,
-     legend = FALSE,
-     lwd = 2,
-     main = "",
-     xlab = "HFI")
-
-par_res_elev <- parres(fit_final, "elev")
-plot(par_res_elev,
-     legend = FALSE,
-     lwd = 2,
-     main = "",
-     xlab = "Elevation")
-
-par_res_water <- parres(fit_final, "water")
-plot(par_res_water,
-     legend = FALSE,
-     lwd = 2,
-     main = "",
-     xlab = "Water Distance")
-
-par_res_forest <- parres(fit_final, "forest")
-plot(par_res_forest,
-     legend = FALSE,
-     lwd = 2,
-     main = "",
-     xlab = "Forest Cover")
+# Partial residual plot
+create_partial_residual_plt(fit_final, "dc_dist", "Distance to Data Center")
+create_partial_residual_plt(fit_final, "hfi_im", "HFI")
+create_partial_residual_plt(fit_final, "elev_im", "Elevation")
+create_partial_residual_plt(fit_final, "forest", "Forest Cover")
+create_partial_residual_plt(fit_final, "water", "Distance to Water")
