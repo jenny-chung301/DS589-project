@@ -9,7 +9,6 @@
 
 # Load necessary libraries
 library(spatstat)  # For point pattern analysis
-library(bcmaps)    # For BC boundary data
 library(sf)        # For spatial feature manipulation
 
 ################################################################################
@@ -61,20 +60,19 @@ load("data/BC_Covariat.Rda")
 # 2. Spatial Transformation and BC Window Creation
 ################################################################################
 
-# Get BC boundary
-bc <- bc_bound()
-
-# Create BC window in Albers projection
-bc_window_albers <- as.owin(bc)
+# Get a Coordinate Reference System (CRS)
+target_crs <- proj4string(DATA$Window)
+win <- as.owin(st_as_sf(DATA$Window))
 
 # Function to transform points to BC Albers projection and filter to BC only
-transform_points_to_bc <- function(data, bc_window) {
+transform_points_to_bc <- function(data, crs=target_crs, window=win) {
   # Create simple feature from points (WGS84)
   points_sf <- st_as_sf(data.frame(x = data$decimalLongitude, y = data$decimalLatitude), 
                         coords = c("x", "y"), crs = 4326)
   
+  
   # Transform to BC Albers projection
-  points_albers <- st_transform(points_sf, 3005)
+  points_albers <- st_transform(points_sf, crs = crs)
   
   # Extract coordinates
   coords_albers <- st_coordinates(points_albers)
@@ -82,13 +80,13 @@ transform_points_to_bc <- function(data, bc_window) {
   y_albers <- coords_albers[, "Y"]
   
   # Create point pattern in BC Albers projection
-  all_points_ppp <- ppp(x = x_albers, y = y_albers, window = bc_window)
+  all_points_ppp <- ppp(x = x_albers, y = y_albers, window = window)
   
   # Extract points within BC
-  inside_bc <- which(inside.owin(x_albers, y_albers, w = bc_window))
+  inside_bc <- which(inside.owin(x_albers, y_albers, w = window))
   bc_points_x <- x_albers[inside_bc]
   bc_points_y <- y_albers[inside_bc]
-  bc_points_ppp <- ppp(x = bc_points_x, y = bc_points_y, window = bc_window)
+  bc_points_ppp <- ppp(x = bc_points_x, y = bc_points_y, window = window)
   
   return(list(
     all_points_ppp = all_points_ppp,
@@ -100,10 +98,16 @@ transform_points_to_bc <- function(data, bc_window) {
   ))
 }
 
-# Transform data centers to BC Albers projection
-data_centers_albers <- st_transform(data_centers, 3005)
-data_center_coords <- st_coordinates(data_centers_albers)
 
+# Transform data centers to ppp
+data_centers_albers <- st_transform(data_centers, target_crs)
+data_center_coords <- st_coordinates(data_centers_albers)
+data_center_ppp <- ppp(
+  x = data_center_coords[, "X"],
+  y = data_center_coords[, "Y"],
+  window = win
+)
+dc_dist <- distmap(data_center_ppp)
 
 ################################################################################
 # 3. Analysis Functions
@@ -117,7 +121,6 @@ create_density_plot <- function(data_ppp, title) {
   plot(data_ppp, pch = 16, cex = 0.3, cols = "white", add = TRUE)
   return(lambda_u_hat)
 }
-
 
 # Function to perform quadrat test
 perform_quadrat_test <- function(data_ppp, nx = 4, ny = 4, plot = TRUE) {
@@ -162,7 +165,7 @@ create_feature_plot <- function(data, title, data_ppp = NA){
   plot(data, main = title)
   plot(data_ppp, pch = 16, cex = 0.7, add = TRUE)
   plot(data_ppp, pch = 16, cex = 0.3, cols = "white", add = TRUE)
-  points(data_center_ppp$x, data_center_ppp$y, col = "green", pch = 4, cex = 1.2)
+  # points(data_center_ppp$x, data_center_ppp$y, col = "green", pch = 4, cex = 1.2)
 }
 
 
@@ -182,10 +185,29 @@ data <- load_data("data/salmon.csv")
 cat("Temporal range of data:", min(data$year, na.rm = TRUE), 
     "to", max(data$year, na.rm = TRUE), "\n")
 
+
+######################################
+# Comparison with 2010
+######################################
+
+year_data_2010 <- filter_by_year(data, 2010)
+
+# Transform points to BC Albers and filter to BC only
+transformed_points_2010 <- transform_points_to_bc(year_data_2010)
+inside_bc_2010 <- transformed_points_2010$bc_points_ppp
+summary(inside_bc_2010)
+cat("The salmon population: ", npoints(inside_bc_2010))
+
+# Visualize the density
+create_density_plot(inside_bc_2010, "Salman Distribution")
+
+######################################
+# 2024
+######################################
 year_data <- filter_by_year(data, 2024)
 
 # Transform points to BC Albers and filter to BC only
-transformed_points <- transform_points_to_bc(year_data, bc_window_albers)
+transformed_points <- transform_points_to_bc(year_data)
 inside_bc <- transformed_points$bc_points_ppp
 summary(inside_bc)
 cat("The salmon population: ", npoints(inside_bc))
@@ -200,32 +222,16 @@ intensity(inside_bc)
 quadrat_result <- perform_quadrat_test(inside_bc, nx=4, ny=4)
 quadrat_result$test_result # p-value < 2.2e-16
 
+
 ######################################
 # Distance from data centers
 ######################################
 
-# Convert to sf for distance calculation
-points_sf <- st_as_sf(
-  data.frame(x = inside_bc$x, y = inside_bc$y),
-  coords = c("x", "y"), crs = 3005
-)
-min_distances <- calculate_center_distances(points_sf, data_centers_albers) 
-
-inside_bc_marked <- inside_bc %mark% as.numeric(min_distances)
-
-# Create distance map
-data_center_ppp <- ppp(
-  x = data_center_coords[, "X"],
-  y = data_center_coords[, "Y"],
-  window = bc_window_albers
-)
-dist_im <- distmap(data_center_ppp)
-
 # Plot distance map
 plot(dist_im, main = "Distance to nearest data center (m)")
-plot(inside_bc_marked, add = TRUE, pch = 16, cex = 0.6)
 points(data_center_ppp$x, data_center_ppp$y, col = "red", pch = 4, cex = 1.2)
-plot(Window(inside_bc_marked), add = TRUE)
+plot(Window(inside_bc), add = TRUE)
+
 
 ######################################
 # HFI (Human Footprint Index)
@@ -255,11 +261,38 @@ create_feature_plot(forest, "Forest Cover (%)", inside_bc)
 ######################################
 # II. Modelling
 ######################################
-# Estimate intensity as function of distance
-rho_distance <- rhohat(inside_bc_marked, dist_im, confidence = 0.95)
-plot(rho_distance, main = "Salmon Density vs Distance to Data Centers")
+k_inside_bc <- Kest(inside_bc)
 
-rho_forest <- rhohat(inside_bc_marked, forest, confidence = 0.95)
+plot(k_inside_bc,
+     main = "",
+     lwd = 2)
+######################################
+# Evaluating Clustering under an Inhomogeneous Intensity Assumption
+######################################
+lambda_salmon_pos <- density(inside_bc,
+                             sigma=bw.ppl,
+                             positive=TRUE)
+pcf_salmon_inhom <- envelope(inside_bc,
+                             pcfinhom,
+                             simulate = expression(rpoispp(lambda_salmon_pos)),
+                             rank = 1,
+                             nsim = 19)
+#par(mfrow = c(1,2))
+plot(pcf_salmon_inhom,
+     xlim = c(0,20000),
+     main = "",
+     lwd = 2)
+
+
+######################################
+# Relationship with covariates
+######################################
+
+# Estimate intensity as function of distance
+rho_dc <- rhohat(inside_bc, dc_dist, confidence = 0.95)
+plot(rho_dc, main = "Salmon Density vs Distance to Data Centers")
+
+rho_forest <- rhohat(inside_bc, forest, confidence = 0.95)
 plot(rho_forest, main = "Salmon Density vs Forest Cover")
 
 rho_water <- rhohat(inside_bc_marked, water, confidence = 0.95)
@@ -273,6 +306,7 @@ plot(rho_elev, main = "Salmon Density vs Elevation")
 
 # Colinearity -> not too strong
 cor.im(dist_im, hfi, elev, forest, water, use="pairwise.complete.obs")
+
 # 
 # fit <- ppm(
 #   inside_bc ~ dist_im + hfi + elev+ water + forest + I(forest^2) + I(elev^2),
@@ -288,9 +322,9 @@ cor.im(dist_im, hfi, elev, forest, water, use="pairwise.complete.obs")
 # summary(fit)
 
 fit_final<- ppm(
-  inside_bc ~ dist_im + hfi + elev + forest + water + I(hfi^2)  + I(elev^2),
+  inside_bc ~ dc_dist + hfi + elev + forest + water + I(hfi^2)  + I(elev^2),
   data = list(
-    dist_im = dist_im,
+    dc_dist = dc_dist,
     hfi = hfi,  
     elev = elev,  
     water = water,  
@@ -298,6 +332,7 @@ fit_final<- ppm(
   ),
   control = list(maxit = 1000)
 )
+
 summary(fit_final)
 
 plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200)
@@ -313,7 +348,6 @@ plot(inside_bc,
 
 ## Model selection
 fit_null <- ppm(inside_bc ~ 1)
-# summary(fit_null)
 AIC(fit_final)
 AIC(fit_null)
 anova(fit_final, fit_null)
@@ -323,6 +357,7 @@ quadrat.test(fit_final, nx = 4, ny = 4) # p-value < 2.2e-16
 res <- residuals(fit_final)
 plot(res,
      cols = "transparent")
+## without hfi, interpolate on hfi,  
 
 #Calculate the partial residuals as a function of elevation
 par_res_dist <- parres(fit_final, "dist_im")
