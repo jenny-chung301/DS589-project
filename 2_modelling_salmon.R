@@ -391,7 +391,6 @@ fit_no_dc <- ppm(
 summary(fit_no_dc)
 
 anova(fit_final, fit_no_dc)
-
 plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200)
 plot(inside_bc,
      pch = 16,
@@ -405,7 +404,7 @@ plot(inside_bc,
 
 ## Model selection
 fit_null <- ppm(inside_bc ~ 1)
-
+AIC(fit_no_dc)
 AIC(fit_final)
 AIC(fit_simple)
 AIC(fit_null)
