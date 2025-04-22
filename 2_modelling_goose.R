@@ -119,9 +119,9 @@ dc_dist <- distmap(data_center_ppp)
 # Function to create density plot
 create_density_plot <- function(data_ppp, title) {
   lambda_u_hat <- density(data_ppp)
-  plot(lambda_u_hat, main=title)
-  plot(data_ppp, pch = 16, cex = 0.7, add = TRUE)
-  plot(data_ppp, pch = 16, cex = 0.3, cols = "white", add = TRUE)
+  plot(lambda_u_hat, main=title, box = FALSE)
+  plot(data_ppp, pch = 16, cex = 0.7, add = TRUE, box = FALSE)
+  plot(data_ppp, pch = 16, cex = 0.3, cols = "white", add = TRUE, box = FALSE)
   return(lambda_u_hat)
 }
 
@@ -130,9 +130,9 @@ perform_quadrat_test <- function(data_ppp, nx = 4, ny = 4, plot = TRUE) {
   Q <- quadratcount(data_ppp, nx = nx, ny = ny)
   
   if (plot) {
-    plot(intensity(Q, image = TRUE))
-    plot(data_ppp, pch = 16, use.marks = FALSE, cols = "#046C9A", add = TRUE)
-    plot(Q, col = "white", add = TRUE)
+    plot(intensity(Q, image = TRUE), box = FALSE)
+    plot(data_ppp, pch = 16, use.marks = FALSE, cols = "#046C9A", add = TRUE, box = FALSE)
+    plot(Q, col = "white", add = TRUE, box = FALSE)
   }
   
   test_result <- quadrat.test(Q)
@@ -210,7 +210,7 @@ summary(inside_bc_2010)
 cat("The Goose population: ", npoints(inside_bc_2010))
 
 # Visualize the density
-create_density_plot(inside_bc_2010, "Goose Distribution")
+create_density_plot(inside_bc_2010, "Goose Distribution (2010)")
 
 ######################################
 # 2024
@@ -224,7 +224,7 @@ summary(inside_bc)
 cat("The goose population: ", npoints(inside_bc))
 
 # Visualize the density
-create_density_plot(inside_bc, "Goose Distribution")
+create_density_plot(inside_bc, "Goose Distribution (2024)")
 
 # Intensity
 intensity(inside_bc)
@@ -243,10 +243,13 @@ pcf_goose_inhom <- envelope(inside_bc,
                              nsim = 19)
 par(mfrow = c(1,2))
 plot(pcf_goose_inhom,
-     xlim = c(0,10000),
      main = "",
-     lwd = 2,
-     legendargs = list(cex = 0.5))
+     lwd = 2)
+plot(pcf_goose_inhom,
+     xlim = c(0,20000),
+     main = "",
+     lwd = 2)
+
 
 
 ######################################
@@ -334,6 +337,8 @@ create_feature_plot(forest, "Forest Cover (%)", inside_bc)
 # II. Modelling
 ######################################
 # Estimate intensity as function of distance
+par(mfrow = c(1,1))
+
 rho_dc <- rhohat(inside_bc, dc_dist, confidence = 0.95)
 plot(rho_dc, main = "Goose Density vs Distance to Data Centers")
 
@@ -353,7 +358,7 @@ plot(rho_elev, main = "Goose Density vs Elevation")
 cor.im(dc_dist, hfi_im, elev, forest, water, use="pairwise.complete.obs")
 
 fit_final<- ppm(
-  inside_bc ~ dc_dist + hfi_im + elev_im + forest + water+I(elev_im^2),
+  inside_bc ~ dc_dist + hfi_im + elev_im + forest + water + I(elev_im^2),
   data = list(
     dc_dist = dc_dist,
     hfi_im = hfi_im,  
@@ -365,16 +370,52 @@ fit_final<- ppm(
 )
 
 summary(fit_final)
-plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200)
+
+model_summary <- summary(fit_final)
+
+# extract the coefficient table
+coeff_matrix <- model_summary$coefs
+
+# convert to data frame
+coeff_df <- as.data.frame(coeff_matrix)
+
+# variable names as columns
+coeff_df$Variable <- rownames(coeff_df)
+rownames(coeff_df) <- NULL
+
+# rearranging
+coeff_df <- coeff_df[, c("Variable", "Estimate", "S.E.", "CI95.lo", "CI95.hi", "Ztest", "Zval")]
+
+# save to csv for later use
+write.csv(coeff_df, "ppm_model_summary.csv", row.names = FALSE) # will override any previous files with same name
+
+## exclude data centers
+fit_no_dc <- ppm(
+  inside_bc ~ hfi_im + elev_im + forest + water + I(elev_im^2),
+  covariates = list(
+    hfi_im = hfi_im,
+    elev = elev,
+    water = water,
+    forest = forest
+  ),
+  control = list(maxit = 5000)
+)
+summary(fit_no_dc)
+
+# compare full model against model without data centers
+anova(fit_final, fit_no_dc)
+
+
+plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200, box = FALSE)
 plot(inside_bc,
      pch = 16,
      cex = 0.6,
-     add = TRUE)
+     add = TRUE, box = FALSE)
 plot(inside_bc,
      pch = 16,
      cex = 0.3,
-     cols = "white",
-     add = TRUE)
+     cols = "green",
+     add = TRUE, box = FALSE)
 
 ## Model selection
 fit_null <- ppm(inside_bc ~ 1)

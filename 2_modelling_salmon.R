@@ -210,7 +210,7 @@ summary(inside_bc_2010)
 cat("The salmon population: ", npoints(inside_bc_2010))
 
 # Visualize the density
-create_density_plot(inside_bc_2010, "Salman Distribution (2010)")
+create_density_plot(inside_bc_2010, "Salmon Distribution (2010)")
 
 ######################################
 # 2024
@@ -224,7 +224,7 @@ summary(inside_bc)
 cat("The salmon population: ", npoints(inside_bc))
 
 # Visualize the density
-create_density_plot(inside_bc, "Salman Distribution (2024)")
+create_density_plot(inside_bc, "Salmon Distribution (2024)")
 
 # Intensity
 intensity(inside_bc)
@@ -365,7 +365,7 @@ fit_simple <- ppm(
 summary(fit_simple)
 
 fit_final <- ppm(
-  inside_bc ~ dc_dist + hfi_im + elev+ water + forest + I(forest^2),
+  inside_bc ~ dc_dist + hfi_im + elev+ water + forest + I(forest^2) + I(elev^2),
   covariates = list(
     dc_dist = dc_dist,
     hfi_im = hfi_im,
@@ -377,9 +377,27 @@ fit_final <- ppm(
 )
 summary(fit_final)
 
+model_summary <- summary(fit_final)
+
+# extract the coefficient table
+coeff_matrix <- model_summary$coefs
+
+# convert to data frame
+coeff_df <- as.data.frame(coeff_matrix)
+
+# variable names as columns
+coeff_df$Variable <- rownames(coeff_df)
+rownames(coeff_df) <- NULL
+
+# rearranging
+coeff_df <- coeff_df[, c("Variable", "Estimate", "S.E.", "CI95.lo", "CI95.hi", "Ztest", "Zval")]
+
+# save to csv for later use
+write.csv(coeff_df, "ppm_model_summary.csv", row.names = FALSE)
+
 ## exclude data centers
 fit_no_dc <- ppm(
-  inside_bc ~ hfi_im + elev+ water + forest + I(forest^2),
+  inside_bc ~ hfi_im + elev+ water + forest + I(forest^2) + I(elev^2),
   covariates = list(
     hfi_im = hfi_im,
     elev = elev,
@@ -390,17 +408,20 @@ fit_no_dc <- ppm(
 )
 summary(fit_no_dc)
 
+
+# compare full model against model without data centers
 anova(fit_final, fit_no_dc)
-plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200)
+
+plot(fit_final, log = TRUE, se=FALSE, superimpose=FALSE, n=200, box = FALSE)
 plot(inside_bc,
      pch = 16,
      cex = 0.6,
-     add = TRUE)
+     add = TRUE, box = FALSE)
 plot(inside_bc,
      pch = 16,
      cex = 0.3,
-     cols = "white",
-     add = TRUE)
+     cols = "green",
+     add = TRUE, box = FALSE)
 
 ## Model selection
 fit_null <- ppm(inside_bc ~ 1)
