@@ -13,10 +13,10 @@ This R project analyzes the spatial distribution of salmon and canada goose obse
 │   ├── geese_canada_2010_2024.csv# Canada Goose Occurrence records (GBIF download)
 │   ├── bc_data_centers.geojson   # Locations of data centres in BC
 │   └── BC_Covariat.Rda           # R data file containing environmental covariates for BC
-├── 1_preprocessing.R         # The preprocess script
-├── 2_modelling_salmon.R      # The analysis script 
-├── 2_modelling_goose.R       # The analysis script 
-└── README.md                     # You are here
+├── 1_preprocessing.R             # The preprocess script
+├── 2_modelling_salmon.R          # The analysis script 
+├── 2_modelling_goose.R           # The analysis script 
+└── README.md                     
 ```
 
 
