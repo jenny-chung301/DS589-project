@@ -34,8 +34,8 @@ The following R packages are required:
 The analysis examines how salmon and canada goose distribution patterns relate to various environmental factors with special attention to the potential influence of data centers. Key findings include:
 
 1. **Spatial Distribution Patterns**:
-   - Significant spatial clustering of salmon and canada goose detected (quadrat test p-value < 2.2e-16)
-   - Comparison of salmon and canada goose distribution between 2010 and 2024 showing population changes
+   - Significant spatial clustering of species detected (quadrat test p-value < 2.2e-16)
+   - Comparison of species distribution between 2010 and 2024 showing population changes
    - Density maps highlighting population hotspots across British Columbia
 
 2. **Environmental Relationships**:
@@ -44,7 +44,7 @@ The analysis examines how salmon and canada goose distribution patterns relate t
    - Complex relationships with Human Footprint Index, elevation, water proximity, and forest cover
 
 3. **Statistical Models**:
-   - Final model includes quadratic terms for forest cover and elevation (I(forest^2) + I(elev^2))
+   - Final model includes quadratic terms for environmetal covariates
    - Significant improvement of full model over null model (based on AIC comparisons)
    - Statistical significance of data center distances in predicting species distribution
 
